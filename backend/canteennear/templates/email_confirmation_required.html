@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+
+{% block title %}Подтверждение email — {{ block.super }}{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8">
+    <div class="rounded-3xl border border-slate-200/80 bg-white p-8 shadow-lg shadow-slate-200/40">
+        <h1 class="text-2xl font-semibold text-slate-900">Требуется подтверждение email</h1>
+        <p class="mt-4 text-slate-600">Ваш email <span class="font-medium text-slate-900">{{ email }}</span> ещё не подтверждён.</p>
+        <p class="mt-2 text-slate-600">Мы отправили письмо со ссылкой для подтверждения. Перейдите по ссылке, чтобы получить доступ к личному кабинету разработчика.</p>
+
+        <div class="mt-6 rounded-3xl bg-slate-50 p-6 ring-1 ring-slate-200">
+            <p class="text-sm font-semibold text-slate-900">Не получили письмо?</p>
+            <p class="mt-2 text-sm text-slate-600">Нажмите кнопку ниже, и мы отправим новое письмо на тот же адрес.</p>
+        </div>
+
+        <form method="post" class="mt-6">
+            {% csrf_token %}
+            <button type="submit" class="rounded-3xl bg-brand px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-brand/20 transition hover:bg-brand-dark">Отправить письмо повторно</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

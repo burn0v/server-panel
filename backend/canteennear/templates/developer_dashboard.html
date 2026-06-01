@@ -1,0 +1,172 @@
+{% extends 'base.html' %}
+
+{% block title %}Для разработчиков — {{ block.super }}{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
+    <header class="rounded-3xl border border-slate-200/80 bg-white p-8 shadow-lg shadow-slate-200/40">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+                <p class="text-sm font-semibold uppercase tracking-[0.2em] text-brand">API для разработчиков</p>
+                <h1 class="mt-3 text-3xl font-semibold text-slate-900">Личный кабинет разработчика</h1>
+                <p class="mt-2 max-w-2xl text-slate-600">Здесь вы можете сгенерировать API-ключ для доступа к поисковому API нейросетей и ознакомиться с условиями использования.</p>
+            </div>
+            <div class="rounded-3xl bg-slate-100 px-5 py-4 text-sm text-slate-700 ring-1 ring-slate-200">
+                Ваш логин: <span class="font-semibold text-slate-900">{{ user.username }}</span>
+            </div>
+        </div>
+    </header>
+
+    <div class="mt-8 grid gap-8 xl:grid-cols-[1.1fr_0.9fr]">
+        <section class="space-y-6 rounded-3xl border border-slate-200/80 bg-white p-8 shadow-sm">
+            <div class="flex items-center justify-between gap-4">
+                <div>
+                    <h2 class="text-xl font-semibold text-slate-900">Управление API-ключом</h2>
+                    <p class="mt-1 text-sm text-slate-500">Ваш ключ используется для запросов к приватному API. Храните его в безопасности.</p>
+                </div>
+                {% if api_key and user_blocked %}
+                <span class="inline-flex items-center rounded-full bg-red-100 px-3 py-1.5 text-sm font-medium text-red-700">
+                    Заблокирован
+                </span>
+                {% elif api_key and not user_blocked %}
+                <span class="inline-flex items-center rounded-full bg-emerald-100 px-3 py-1.5 text-sm font-medium text-emerald-700">
+                    Активен
+                </span>
+                {% else %}
+                <span class="inline-flex items-center rounded-full bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-700">
+                    Не создан
+                </span>
+                {% endif %}
+            </div>
+
+            {% if api_key and api_blocked %}
+            <div class="rounded-3xl border border-red-200 bg-red-50 p-5 text-sm text-red-700">
+                Ваш API ключ заблокирован администратором. Вы не можете использовать этот ключ и не сможете создать новый, пока блокировка не будет снята.
+            </div>
+            {% elif user_blocked %}
+            <div class="rounded-3xl border border-red-200 bg-red-50 p-5 text-sm text-red-700">
+                Ваш аккаунт заблокирован для создания новых API ключей. Обратитесь к администратору, чтобы снять блокировку.
+            </div>
+            {% endif %}
+
+            <!-- API Usage Stats -->
+            {% if api_key %}
+            <div class="rounded-3xl bg-gradient-to-br from-blue-50 to-cyan-50 p-6 ring-1 ring-blue-200">
+                <div class="flex items-center justify-between gap-4">
+                    <div>
+                        <p class="text-sm font-medium text-slate-700">Использование API за 24 часа</p>
+                        <p class="mt-1 text-3xl font-bold text-slate-900">{{ daily_usage }}<span class="text-lg text-slate-500"> / {{ daily_limit }}</span></p>
+                    </div>
+                    <div class="text-right">
+                        <p class="text-2xl font-semibold text-cyan-600" id="usage-percent">0%</p>
+                    </div>
+                </div>
+                
+                <!-- Progress Bar -->
+                <div class="mt-4 h-2 w-full overflow-hidden rounded-full bg-slate-200">
+                    <div id="usage-bar" class="h-full rounded-full bg-gradient-to-r from-cyan-400 to-blue-500 transition-all duration-300" style="width: 0%"></div>
+                </div>
+                
+                <div class="mt-3 flex items-center gap-2 text-xs text-slate-600">
+                    {% if daily_usage >= daily_limit %}
+                        <span class="inline-block h-2 w-2 rounded-full bg-red-500"></span>
+                        <span>Лимит достигнут. Запросы будут доступны завтра.</span>
+                    {% else %}
+                        <span class="inline-block h-2 w-2 rounded-full bg-emerald-500"></span>
+                        <span id="usage-remaining">Вы можете сделать ещё {{ remaining_daily_usage }} запросов</span>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+
+            <div class="rounded-3xl bg-slate-50 p-6 ring-1 ring-slate-200">
+                {% if raw_key %}
+                    <p class="text-sm font-medium text-slate-700">Новый ключ сгенерирован. Скопируйте его сейчас — после обновления страницы он больше не будет виден.</p>
+                    <div class="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+                        <input id="api-key-input" type="text" readonly value="{{ raw_key }}" class="min-w-0 flex-1 rounded-2xl border border-slate-300 bg-white px-4 py-3 text-slate-900 shadow-sm focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20" />
+                        <button id="copy-api-key" type="button" class="inline-flex shrink-0 rounded-2xl bg-brand px-4 py-3 text-sm font-semibold text-white transition hover:bg-brand-dark">Скопировать</button>
+                    </div>
+                {% elif api_key %}
+                    <p class="text-sm font-medium text-slate-700">API-ключ уже создан. После генерации он доступен только один раз.</p>
+                    <div class="mt-4 rounded-2xl border border-slate-200 bg-slate-100 px-4 py-4 text-slate-600">
+                        <div class="text-sm text-slate-500">Ключ зашифрован и не отображается публично.</div>
+                        <div class="mt-2 text-sm text-slate-700">Для получения нового ключа нажмите «Перевыпустить ключ».</div>
+                    </div>
+                {% else %}
+                    <div class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-slate-600">
+                        <p class="text-sm font-medium text-slate-900">У вас ещё нет API-ключа.</p>
+                        <p class="mt-2 text-sm">Нажмите кнопку, чтобы создать ключ и получить доступ к API.</p>
+                    </div>
+                {% endif %}
+            </div>
+
+            <form method="post" class="grid gap-4 sm:grid-cols-[auto_1fr] sm:items-center">
+                {% csrf_token %}
+                <button type="submit" class="rounded-3xl bg-brand px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-brand/20 transition hover:bg-brand-dark">{% if api_key %}Перевыпустить ключ{% else %}Сгенерировать API-ключ{% endif %}</button>
+                <p class="text-sm text-slate-500">При перевыпуске старый ключ автоматически аннулируется.</p>
+            </form>
+        </section>
+
+        <aside class="space-y-6 rounded-3xl border border-slate-200/80 bg-white p-8 shadow-sm">
+            <div>
+                <h2 class="text-xl font-semibold text-slate-900">Условия использования API</h2>
+                <p class="mt-3 text-slate-600">Используйте ключ честно и в рамках лимитов сервиса.</p>
+            </div>
+
+            <div class="space-y-4 text-sm leading-7 text-slate-600">
+                <div class="rounded-3xl bg-slate-50 p-5 ring-1 ring-slate-200">
+                    <p class="font-semibold text-slate-900">1. Суточный лимит</p>
+                    <p class="mt-2">Максимум <strong class="text-slate-900">{{ daily_limit }} запросов в сутки</strong>. Лимит обновляется каждые 24 часа.</p>
+                </div>
+                <div class="rounded-3xl bg-slate-50 p-5 ring-1 ring-slate-200">
+                    <p class="font-semibold text-slate-900">2. Лимиты запросов</p>
+                    <p class="mt-2">Не делайте больше 100 запросов в минуту. В случае превышения доступа может быть временно ограничен.</p>
+                </div>
+                <div class="rounded-3xl bg-slate-50 p-5 ring-1 ring-slate-200">
+                    <p class="font-semibold text-slate-900">3. Ответственное использование</p>
+                    <p class="mt-2">Не используйте ключ для автоматического спама, тестовых «душ» или других вредоносных сценариев.</p>
+                </div>
+                <div class="rounded-3xl bg-slate-50 p-5 ring-1 ring-slate-200">
+                    <p class="font-semibold text-slate-900">4. Безопасность</p>
+                    <p class="mt-2">Храните ключ в секрете. Не публикуйте его в открытом коде или репозиториях.</p>
+                </div>
+                <div class="rounded-3xl bg-slate-50 p-5 ring-1 ring-slate-200">
+                    <p class="font-semibold text-slate-900">5. Отзыв доступа</p>
+                    <p class="mt-2">Администрация оставляет за собой право отозвать ключ в любой момент при нарушении правил.</p>
+                </div>
+            </div>
+        </aside>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        // Расчёт процента использования API
+        var dailyUsage = {{ daily_usage }};
+        var dailyLimit = {{ daily_limit }};
+        var percentage = Math.round((dailyUsage / dailyLimit) * 100);
+        
+        var usagePercent = document.getElementById('usage-percent');
+        var usageBar = document.getElementById('usage-bar');
+        if (usagePercent) usagePercent.textContent = percentage + '%';
+        if (usageBar) usageBar.style.width = percentage + '%';
+
+        var copyButton = document.getElementById('copy-api-key');
+        var apiInput = document.getElementById('api-key-input');
+        if (!copyButton || !apiInput) return;
+
+        copyButton.addEventListener('click', function () {
+            apiInput.select();
+            apiInput.setSelectionRange(0, 99999);
+            navigator.clipboard.writeText(apiInput.value).then(function () {
+                copyButton.textContent = 'Скопировано';
+                setTimeout(function () {
+                    copyButton.textContent = 'Скопировать';
+                }, 1800);
+            });
+        });
+    });
+</script>
+{% endblock %}

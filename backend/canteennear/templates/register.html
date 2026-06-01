@@ -23,7 +23,7 @@
             {{ field }}
         </div>
         {% if field.help_text %}
-        <p class="text-xs text-slate-500">{{ field.help_text }}</p>
+        <p class="text-xs text-slate-500">{{ field.help_text|safe }}</p>
         {% endif %}
         {% for error in field.errors %}
         <p class="text-sm text-red-600">{{ error }}</p>

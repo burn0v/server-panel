@@ -3,6 +3,9 @@
 import os
 import sys
 
+# Ensure workspace root is on sys.path so top-level `api` package is importable
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 
 def main():
     """Run administrative tasks."""

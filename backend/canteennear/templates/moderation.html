@@ -1,0 +1,41 @@
+{% extends 'base.html' %}
+
+{% block title %}Модерация отзывов — Панель управления{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-4xl px-4">
+    <h1 class="text-2xl font-semibold text-slate-800">Модерация отзывов</h1>
+
+    <div class="mt-6 space-y-4">
+        {% if pending %}
+            {% for review in pending %}
+                <div class="rounded-lg bg-white p-4 shadow">
+                    <div class="flex justify-between">
+                        <div>
+                            <div class="text-sm text-slate-500">{{ review.user.username }} — {{ review.canteen.name }}</div>
+                            <div class="mt-2 text-slate-800">{{ review.text }}</div>
+                            <div class="mt-2 text-sm text-slate-500">Оценка: {{ review.rating }} — {{ review.created_at }}</div>
+                        </div>
+                        <div class="flex flex-col gap-2">
+                            <form method="post" action="{% url 'admin_moderation' %}">
+                                {% csrf_token %}
+                                <input type="hidden" name="review_id" value="{{ review.id }}">
+                                <input type="hidden" name="action" value="approve">
+                                <button type="submit" class="rounded bg-green-600 px-3 py-2 text-sm text-white">Одобрить</button>
+                            </form>
+                            <form method="post" action="{% url 'admin_moderation' %}">
+                                {% csrf_token %}
+                                <input type="hidden" name="review_id" value="{{ review.id }}">
+                                <input type="hidden" name="action" value="delete">
+                                <button type="submit" class="rounded bg-red-600 px-3 py-2 text-sm text-white">Удалить</button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            {% endfor %}
+        {% else %}
+            <p class="text-slate-600">Нет ожидающих модерации отзывов.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

@@ -1,16 +1,49 @@
 import requests
 from django.conf import settings
+from django.core.mail import send_mail
 from django.shortcuts import render, get_object_or_404, redirect
 from django.views.generic import ListView
 from django.db.models import Exists, OuterRef
 from django.urls import reverse
-from .models import Canteen, Review
+from .models import APIKey, Canteen, EmailConfirmation, Review, APIUsage
+from .models import SupportChat, SupportMessage
+from django.contrib.auth.decorators import login_required, user_passes_test
+from django.contrib.auth.models import User
+from django.utils.decorators import method_decorator
+from django.utils import timezone
 from .forms import UserRegisterForm
 from django.contrib import messages
 from geopy.distance import geodesic
 
 def _catalog_api_key():
     return getattr(settings, "TWO_GIS_MAP_KEY", "")
+
+
+def send_confirmation_email(request, user):
+    confirmation = EmailConfirmation.create_for_user(user)
+    confirmation_link = request.build_absolute_uri(
+        reverse("confirm_email", args=[confirmation.token])
+    )
+    subject = "Подтвердите email для Столовой Рядом"
+    message = (
+        f"Здравствуйте, {user.username}!\n\n"
+        "Спасибо за регистрацию на Столовая Рядом.\n"
+        "Чтобы подтвердить ваш email и получить доступ к личному кабинету разработчика, \
+"
+        f"перейдите по ссылке:\n\n{confirmation_link}\n\n"
+        "Если вы не регистрировались на сайте, просто проигнорируйте это сообщение.\n"
+    )
+    send_mail(
+        subject,
+        message,
+        settings.DEFAULT_FROM_EMAIL,
+        [user.email],
+        fail_silently=False,
+    )
+
+
+def email_confirmed_required(user):
+    return EmailConfirmation.objects.filter(user=user, used_at__isnull=False).exists()
 
 def home(request):
     canteens = Canteen.objects.all()[:6]
@@ -83,9 +116,13 @@ def search(request):
 
 def canteen_detail(request, id):
     canteen = get_object_or_404(Canteen, id=id)
-    reviews = canteen.reviews.all().order_by('-created_at')
+    reviews = canteen.reviews.filter(approved=True).order_by('-created_at')
     
     if request.method == "POST" and request.user.is_authenticated:
+        # Запретить оставлять отзывы заблокированным пользователям
+        if APIKey.objects.filter(user=request.user, user_blocked=True).exists():
+            messages.warning(request, "Ваш аккаунт заблокирован и вы более не можете оставлять отзывы. Для получения дополнительной информации обратитесь в поддержку.")
+            return redirect(reverse("canteen_detail", kwargs={"id": canteen.id}))
         text = request.POST.get("text", "").strip()
         rating = request.POST.get("rating", "5")
         
@@ -96,7 +133,8 @@ def canteen_detail(request, id):
                 canteen=canteen,
                 user=request.user,
                 text=text[:1000],
-                rating=int(rating)
+                rating=int(rating),
+                approved=False,
             )
             # 2. Мгновенно обновляем рейтинг столовой
             canteen.update_rating()
@@ -119,14 +157,296 @@ def canteen_detail(request, id):
         "gis_map_key": settings.TWO_GIS_MAP_KEY,
     })
 
+
+@login_required
+def developer_dashboard(request):
+    if not email_confirmed_required(request.user):
+        return redirect("email_confirmation_required")
+
+    api_key = APIKey.objects.filter(user=request.user, is_active=True).first()
+    raw_key = request.session.pop("developer_api_key", None)
+    
+    # Получаем информацию об использовании API
+    daily_usage = 0
+    daily_limit = 1000
+    remaining_daily_usage = daily_limit
+    if api_key:
+        # Считаем использование по всем ключам пользователя, не только по текущему
+        daily_usage = APIUsage.get_daily_usage_count_for_user(request.user)
+        remaining_daily_usage = max(0, daily_limit - daily_usage)
+
+    if request.method == "POST":
+        api_key, raw_key = APIKey.create_for_user(request.user)
+        if api_key is None:
+            messages.warning(
+                request,
+                "Вам запрещено создавать новые API ключи. Обратитесь к администратору."
+            )
+        else:
+            request.session["developer_api_key"] = raw_key
+        return redirect("developer_dashboard")
+
+    # Проверяем, есть ли активный заблокированный ключ у пользователя
+    api_blocked = APIKey.objects.filter(user=request.user, is_active=True, is_blocked=True).exists()
+    # Проверяем, заблокирован ли пользователь для создания новых ключей (флаг хранится на ключах)
+    user_blocked = APIKey.objects.filter(user=request.user, user_blocked=True).exists()
+
+    return render(request, "developer_dashboard.html", {
+        "api_key": api_key,
+        "raw_key": raw_key,
+        "daily_usage": daily_usage,
+        "daily_limit": daily_limit,
+        "remaining_daily_usage": remaining_daily_usage,
+        "api_blocked": api_blocked,
+        "user_blocked": user_blocked,
+    })
+
+
+@login_required
+def email_confirmation_required(request):
+    if email_confirmed_required(request.user):
+        return redirect("developer_dashboard")
+
+    if request.method == "POST":
+        try:
+            send_confirmation_email(request, request.user)
+            messages.success(
+                request,
+                f"Письмо для подтверждения отправлено на {request.user.email}."
+            )
+        except Exception:
+            messages.warning(
+                request,
+                "Не удалось отправить письмо. Попробуйте позже."
+            )
+        return redirect("email_confirmation_required")
+
+    return render(request, "email_confirmation_required.html", {
+        "email": request.user.email,
+    })
+
+
+def confirm_email(request, token):
+    confirmation = EmailConfirmation.objects.filter(token=token, is_active=True).first()
+    if not confirmation:
+        return render(request, "email_confirmation_invalid.html", {})
+
+    confirmation.activate_user()
+    messages.success(request, "Email успешно подтверждён! Ваш аккаунт активирован. Теперь вы можете войти.")
+    return redirect('login')
+
+
+def _staff_required(view_func):
+    return user_passes_test(lambda u: u.is_active and u.is_staff)(view_func)
+
+
+@login_required
+@_staff_required
+def admin_panel(request):
+    """Простая панель управления с вкладками; по умолчанию — ссылка на модерацию."""
+    return render(request, "admin_panel.html", {})
+
+
+@login_required
+@_staff_required
+def moderation_view(request):
+    """Список пока не одобренных отзывов и действия approve/delete."""
+    if request.method == "POST":
+        action = request.POST.get("action")
+        rid = request.POST.get("review_id")
+        try:
+            review = Review.objects.get(pk=int(rid))
+        except Exception:
+            review = None
+
+        if review and action == "approve":
+            review.approved = True
+            review.save()
+            review.canteen.update_rating()
+        elif review and action == "delete":
+            canteen = review.canteen
+            review.delete()
+            canteen.update_rating()
+
+        return redirect("admin_moderation")
+
+    pending = Review.objects.filter(approved=False).order_by("-created_at")
+    return render(request, "moderation.html", {"pending": pending})
+
+
+@login_required
+@_staff_required
+def api_analytics_view(request):
+    """Аналитика по API использованию и управление ключами пользователей."""
+    from django.utils import timezone
+    from datetime import timedelta
+    
+    if request.method == "POST":
+        action = request.POST.get("action")
+        user_id = request.POST.get("user_id")
+        
+        try:
+            user = User.objects.get(pk=int(user_id))
+        except Exception:
+            user = None
+        
+        if user:
+            if action == "block_user":
+                # Блокируем пользователя для создания новых ключей и делаем все его ключи нерабочими
+                APIKey.objects.filter(user=user).update(user_blocked=True, is_blocked=True)
+                messages.success(request, f"Пользователь {user.username} заблокирован. Новые ключи создаваться не будут и существующие ключи заблокированы.")
+            elif action == "unblock_user":
+                # Разблокируем пользователя и все его ключи
+                APIKey.objects.filter(user=user).update(user_blocked=False, is_blocked=False)
+                messages.success(request, f"Пользователь {user.username} разблокирован и ключи восстановлены.")
+            elif action == "block_key":
+                key_id = request.POST.get("key_id")
+                try:
+                    api_key = APIKey.objects.get(pk=int(key_id))
+                    api_key.is_blocked = True
+                    api_key.save()
+                    messages.success(request, f"API ключ пользователя {user.username} заблокирован.")
+                except Exception:
+                    pass
+            elif action == "unblock_key":
+                key_id = request.POST.get("key_id")
+                try:
+                    api_key = APIKey.objects.get(pk=int(key_id))
+                    api_key.is_blocked = False
+                    api_key.save()
+                    messages.success(request, f"API ключ пользователя {user.username} разблокирован.")
+                except Exception:
+                    pass
+        
+        return redirect("admin_api_analytics")
+    
+    # Получаем всех пользователей с активными API ключами
+    users_with_api = User.objects.filter(
+        api_keys__is_active=True
+    ).distinct()
+    
+    cutoff_time = timezone.now() - timedelta(hours=24)
+    
+    # Готовим данные для каждого пользователя
+    api_stats = []
+    for user in users_with_api:
+        api_keys = APIKey.objects.filter(user=user, is_active=True)
+        daily_usage = APIUsage.objects.filter(
+            api_key__in=api_keys,
+            timestamp__gte=cutoff_time
+        ).count()
+        
+        is_user_blocked = APIKey.objects.filter(user=user, user_blocked=True).exists()
+        
+        api_stats.append({
+            'user': user,
+            'api_keys': api_keys,
+            'daily_usage': daily_usage,
+            'daily_limit': 1000,
+            'remaining': max(0, 1000 - daily_usage),
+            'usage_percent': int((daily_usage / 1000) * 100),
+            'is_user_blocked': is_user_blocked,
+        })
+    
+    # Сортируем по использованию (больше всего используют первыми)
+    api_stats.sort(key=lambda x: x['daily_usage'], reverse=True)
+    
+    return render(request, "api_analytics.html", {
+        "api_stats": api_stats,
+    })
+
+
+@login_required
+def support_view(request):
+    """Пользовательская вкладка поддержки: список чатов и создание нового."""
+    # Список чатов пользователя
+    chats = SupportChat.objects.filter(user=request.user).order_by('-created_at')
+
+    if request.method == 'POST':
+        subject = request.POST.get('subject', '').strip()
+        initial_msg = request.POST.get('message', '').strip()
+        chat = SupportChat.objects.create(user=request.user, subject=subject)
+        if initial_msg:
+            SupportMessage.objects.create(chat=chat, sender=request.user, text=initial_msg, from_admin=False)
+        return redirect('support_chat', chat_id=chat.id)
+
+    return render(request, 'support_user_list.html', {'chats': chats, 'suppress_messages': True})
+
+
+@login_required
+def support_chat_view(request, chat_id):
+    chat = get_object_or_404(SupportChat, pk=chat_id, user=request.user)
+
+    # Пользователь не может писать в закрытый чат
+    if chat.is_closed and request.method == 'POST':
+        messages.warning(request, 'Чат закрыт — вы не можете отправлять сообщения.')
+        return redirect('support_chat', chat_id=chat.id)
+
+    if request.method == 'POST' and not chat.is_closed:
+        if 'close_chat' in request.POST:
+            chat.close()
+            messages.success(request, 'Чат закрыт.')
+            return redirect('support')
+        text = request.POST.get('message', '').strip()
+        if text:
+            SupportMessage.objects.create(chat=chat, sender=request.user, text=text, from_admin=False)
+        return redirect('support_chat', chat_id=chat.id)
+    messages_qs = chat.messages.select_related('sender').all()
+    return render(request, 'support_chat.html', {'chat': chat, 'messages': messages_qs, 'suppress_messages': True})
+
+
+@login_required
+@_staff_required
+def admin_support_list(request):
+    """Админская панель — список активных чатов (open)."""
+    active_chats = SupportChat.objects.filter(is_closed=False).order_by('-created_at')
+    return render(request, 'admin_support_list.html', {'chats': active_chats, 'suppress_messages': True})
+
+
+@login_required
+@_staff_required
+def admin_support_chat(request, chat_id):
+    chat = get_object_or_404(SupportChat, pk=chat_id)
+
+    if request.method == 'POST':
+        if 'close_chat' in request.POST:
+            chat.close()
+            messages.success(request, 'Чат закрыт.')
+            return redirect('admin_support_list')
+        text = request.POST.get('message', '').strip()
+        if text:
+            # Администратор отправляет сообщение
+            SupportMessage.objects.create(chat=chat, sender=request.user, text=text, from_admin=True)
+        return redirect('admin_support_chat', chat_id=chat.id)
+    messages_qs = chat.messages.select_related('sender').all()
+    return render(request, 'admin_support_chat.html', {'chat': chat, 'messages': messages_qs, 'suppress_messages': True})
+
+
+@login_required
+@_staff_required
+def admin_support_archive(request):
+    closed = SupportChat.objects.filter(is_closed=True).order_by('-closed_at')
+    return render(request, 'admin_support_archive.html', {'chats': closed, 'suppress_messages': True})
+
 def register(request):
     if request.method == 'POST':
         form = UserRegisterForm(request.POST)
         if form.is_valid():
-            form.save()
+            user = form.save(commit=False)
+            user.is_active = False  # Создаём неактивного пользователя
+            user.save()
             username = form.cleaned_data.get('username')
-            messages.success(request, f'Аккаунт создан для {username}! Теперь вы можете войти.')
-            return redirect('login')
+            try:
+                send_confirmation_email(request, user)
+                return render(request, 'email_confirmation_pending.html', {
+                    'email': user.email,
+                })
+            except Exception:
+                messages.warning(
+                    request,
+                    f'Аккаунт создан для {username}, но письмо на {user.email} не удалось отправить. Попробуйте позже.',
+                )
+                return redirect('login')
     else:
         form = UserRegisterForm()
     return render(request, 'register.html', {'form': form})
@@ -154,7 +474,7 @@ class EstablishmentsWithReviewsView(ListView):
 
     def get_queryset(self):
         return (
-            Canteen.objects.filter(Exists(Review.objects.filter(canteen_id=OuterRef("pk"))))
+            Canteen.objects.filter(Exists(Review.objects.filter(canteen_id=OuterRef("pk"), approved=True)))
             .order_by("-rating", "name")
         )
 

@@ -5,13 +5,35 @@
 {% block auth_heading %}Вход{% endblock %}
 
 {% block auth_subtitle %}
-<p class="mt-2 text-sm text-slate-400">Войдите, чтобы оставлять отзывы</p>
+<p class="mt-2 text-sm text-slate-400">Войдите, чтобы пользоваться всеми возможностями.</p>
 {% endblock %}
 
 {% block auth_body %}
 <form method="post" class="space-y-5 [&_p]:m-0 [&_p]:space-y-1.5 [&_label]:block [&_label]:text-sm [&_label]:font-medium [&_label]:text-slate-700 [&_input]:mt-1 [&_input]:block [&_input]:w-full [&_input]:rounded-lg [&_input]:border [&_input]:border-slate-300 [&_input]:bg-white [&_input]:px-3.5 [&_input]:py-2.5 [&_input]:text-slate-900 [&_input]:shadow-sm [&_input]:transition [&_input]:placeholder:text-slate-400 [&_input]:focus:border-brand [&_input]:focus:outline-none [&_input]:focus:ring-2 [&_input]:focus:ring-brand/20 [&_ul]:mt-1 [&_ul]:list-none [&_ul]:p-0 [&_li]:text-sm [&_li]:text-red-600">
     {% csrf_token %}
-    {{ form.as_p }}
+    {% if form.non_field_errors %}
+    <ul class="mt-1 list-none p-0">
+        {% for err in form.non_field_errors %}
+        <li class="text-sm text-red-600">{{ err }}</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+    {% for field in form %}
+    <div class="space-y-1.5">
+        <label for="{{ field.id_for_label }}" class="block text-sm font-medium text-slate-700">
+            {{ field.label }}
+        </label>
+        <div class="[&_input]:block [&_input]:w-full [&_input]:rounded-lg [&_input]:border [&_input]:border-slate-300 [&_input]:bg-white [&_input]:px-3.5 [&_input]:py-2.5 [&_input]:text-slate-900 [&_input]:shadow-sm [&_input]:transition [&_input]:placeholder:text-slate-400 [&_input]:focus:border-brand [&_input]:focus:outline-none [&_input]:focus:ring-2 [&_input]:focus:ring-brand/20">
+            {{ field }}
+        </div>
+        {% if field.help_text %}
+        <p class="text-xs text-slate-500">{{ field.help_text|safe }}</p>
+        {% endif %}
+        {% for error in field.errors %}
+        <p class="text-sm text-red-600">{{ error }}</p>
+        {% endfor %}
+    </div>
+    {% endfor %}
     <button
         type="submit"
         class="w-full rounded-lg bg-brand px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-brand/25 transition hover:bg-brand-dark focus:outline-none focus:ring-2 focus:ring-brand/40 focus:ring-offset-2"

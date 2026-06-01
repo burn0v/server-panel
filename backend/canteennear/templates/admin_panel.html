@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+
+{% block title %}Панель управления — Столовая Рядом{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-4xl px-4">
+    <h1 class="text-2xl font-semibold text-slate-800">Панель управления</h1>
+
+    <div class="mt-6">
+        <nav class="flex gap-3">
+            <a href="{% url 'admin_moderation' %}" class="rounded-lg bg-brand px-3 py-2 text-sm font-medium text-white">Модерация</a>
+            <a href="{% url 'admin_api_analytics' %}" class="rounded-lg bg-brand px-3 py-2 text-sm font-medium text-white">API Аналитика</a>
+            <a href="{% url 'admin_support_list' %}" class="rounded-lg bg-brand px-3 py-2 text-sm font-medium text-white">Поддержка</a>
+            <a href="{% url 'admin_support_archive' %}" class="rounded-lg bg-brand px-3 py-2 text-sm font-medium text-white">Архив чатов</a>
+        </nav>
+    </div>
+
+    <div class="mt-6">
+        <p class="text-slate-600">Выберите секцию выше.</p>
+    </div>
+</div>
+{% endblock %}

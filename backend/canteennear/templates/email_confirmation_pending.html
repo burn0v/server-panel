@@ -1,0 +1,43 @@
+{% extends 'registration/auth_layout.html' %}
+
+{% block title %}Подтверждение email — {{ block.super }}{% endblock %}
+
+{% block auth_width %}max-w-lg{% endblock %}
+
+{% block auth_heading %}Подтверждение email{% endblock %}
+
+{% block auth_subtitle %}
+<p class="mt-2 text-sm text-slate-400">Завершите регистрацию</p>
+{% endblock %}
+
+{% block auth_body %}
+<div class="space-y-5">
+    <div class="rounded-lg bg-blue-50 border border-blue-200 p-4">
+        <p class="text-sm text-blue-900">
+            ✓ Аккаунт успешно создан! На вашу почту <span class="font-medium">{{ email }}</span> отправлено письмо для подтверждения.
+        </p>
+    </div>
+
+    <div class="space-y-3">
+        <h3 class="font-medium text-slate-900">Что делать дальше?</h3>
+        <ol class="space-y-2 text-sm text-slate-600 list-decimal list-inside">
+            <li>Откройте свой почтовый ящик</li>
+            <li>Найдите письмо от Столовой Рядом</li>
+            <li>Нажмите на ссылку подтверждения</li>
+            <li>Вернитесь и войдите в свой аккаунт</li>
+        </ol>
+    </div>
+
+    <div class="rounded-lg bg-slate-50 p-4 border border-slate-200">
+        <p class="text-xs text-slate-600">
+            <strong>Письмо не пришло?</strong> Проверьте папку "Спам". Если проблема сохраняется, свяжитесь с поддержкой.
+        </p>
+    </div>
+
+    <div class="pt-4">
+        <a href="{% url 'login' %}" class="block text-center rounded-lg bg-brand px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-brand/25 transition hover:bg-brand-dark focus:outline-none focus:ring-2 focus:ring-brand/40 focus:ring-offset-2">
+            Вернуться на вход
+        </a>
+    </div>
+</div>
+{% endblock %}
