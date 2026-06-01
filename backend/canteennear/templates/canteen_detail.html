@@ -37,9 +37,9 @@
         </div>
     </header>
 
-    <div class="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-3 lg:gap-10">
+    <div class="mt-8">
 
-        <section class="lg:col-span-2">
+        <section>
             <h2 class="text-xl font-bold text-slate-900">Отзывы</h2>
 
             <div class="mt-5 space-y-4">
@@ -109,20 +109,6 @@
             </div>
         </section>
 
-        <aside class="space-y-6 lg:col-span-1">
-            <div class="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm">
-                <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-400">Режим работы</h2>
-                <p class="mt-2 text-slate-800 leading-relaxed whitespace-pre-line">{{ canteen.working_hours }}</p>
-            </div>
-            {% if show_detail_map %}
-            <div class="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
-                <div class="border-b border-slate-100 bg-slate-50 px-5 py-3">
-                    <h2 class="font-semibold text-slate-900">На карте</h2>
-                </div>
-                <div id="canteen-detail-map" class="h-[280px] w-full bg-slate-200"></div>
-            </div>
-            {% endif %}
-        </aside>
     </div>
 </div>
 {% endblock %}

@@ -58,7 +58,7 @@ def email_confirmed_required(user):
     return EmailConfirmation.objects.filter(user=user, used_at__isnull=False).exists()
 
 def home(request):
-    canteens = Canteen.objects.all()[:6]
+    canteens = Canteen.objects.order_by('-rating', 'name')[:6]
     return render(request, "home.html", {"canteens": canteens})
 
 def search(request):
