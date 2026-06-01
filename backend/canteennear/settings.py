@@ -13,13 +13,39 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 import os
 from pathlib import Path
 
+env_path = Path(__file__).resolve().parent.parent / ".env"
 try:
-    from dotenv import load_dotenv
-except ImportError:
-    pass
+    from dotenv import load_dotenv, dotenv_values
+except Exception:
+    # Fallback: simple manual parser for .env (no dependency)
+    if env_path.exists():
+        with open(env_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith('#'):
+                    continue
+                if '=' not in line:
+                    continue
+                k, v = line.split('=', 1)
+                k = k.strip()
+                v = v.strip()
+                # Strip optional surrounding quotes
+                if (v.startswith('"') and v.endswith('"')) or (v.startswith("'") and v.endswith("'")):
+                    v = v[1:-1]
+                os.environ[k] = v
 else:
-    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
-
+    # Use dotenv if available and ensure it overrides environment
+    values = dotenv_values(env_path)
+    for k, v in values.items():
+        if v is not None:
+            os.environ[k] = v
+try:
+    import certifi
+except ImportError:
+    certifi = None
+else:
+    if not os.environ.get("SSL_CERT_FILE"):
+        os.environ["SSL_CERT_FILE"] = certifi.where()
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -65,6 +91,7 @@ REST_FRAMEWORK = {
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
+    'django.middleware.locale.LocaleMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -147,7 +174,7 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # https://docs.djangoproject.com/en/6.0/topics/i18n/
 
-LANGUAGE_CODE = 'en-us'
+LANGUAGE_CODE = 'ru'
 
 TIME_ZONE = 'UTC'
 
@@ -166,28 +193,33 @@ LOGIN_REDIRECT_URL = "home"
 LOGOUT_REDIRECT_URL = "home"
 LOGIN_URL = "login"
 
-# Восстановление пароля: в dev — читаемый вывод в консоль runserver; в prod — SMTP через .env
-EMAIL_BACKEND = os.environ.get(
-    "EMAIL_BACKEND",
-    "canteennear.email.ReadableConsoleEmailBackend",
-)
-DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "noreply@canteennear.local")
-SERVER_EMAIL = DEFAULT_FROM_EMAIL
-
-EMAIL_HOST = os.environ.get("EMAIL_HOST", "")
-EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "587"))
+# Email settings: dev uses readable console backend by default;
+# production/Yandex SMTP uses SMTP backend when username/password are provided.
+EMAIL_HOST = os.environ.get("EMAIL_HOST", "smtp.yandex.ru")
+EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "465"))
 EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "")
 EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
-EMAIL_USE_TLS = os.environ.get("EMAIL_USE_TLS", "true").strip().lower() in (
+EMAIL_USE_SSL = os.environ.get("EMAIL_USE_SSL", "false").strip().lower() in (
     "1",
     "true",
     "yes",
 )
-EMAIL_USE_SSL = os.environ.get("EMAIL_USE_SSL", "").strip().lower() in (
+EMAIL_USE_TLS = os.environ.get("EMAIL_USE_TLS", "false").strip().lower() in (
     "1",
     "true",
     "yes",
 )
+
+if EMAIL_HOST_USER and EMAIL_HOST_PASSWORD:
+    EMAIL_BACKEND = os.environ.get("EMAIL_BACKEND", "django.core.mail.backends.smtp.EmailBackend")
+else:
+    EMAIL_BACKEND = os.environ.get(
+        "EMAIL_BACKEND",
+        "canteennear.email.ReadableConsoleEmailBackend",
+    )
+
+DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", EMAIL_HOST_USER or "noreply@canteennear.local")
+SERVER_EMAIL = DEFAULT_FROM_EMAIL
 
 # Срок действия ссылки сброса пароля (секунды), по умолчанию 24 часа
 PASSWORD_RESET_TIMEOUT = int(os.environ.get("PASSWORD_RESET_TIMEOUT", str(60 * 60 * 24)))

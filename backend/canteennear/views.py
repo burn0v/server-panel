@@ -1,15 +1,17 @@
 import requests
 from django.conf import settings
-from django.core.mail import send_mail
+from django.core.mail import EmailMultiAlternatives
 from django.shortcuts import render, get_object_or_404, redirect
+from django.template.loader import render_to_string
+from django.urls import reverse
 from django.views.generic import ListView
 from django.db.models import Exists, OuterRef
-from django.urls import reverse
 from .models import APIKey, Canteen, EmailConfirmation, Review, APIUsage
 from .models import SupportChat, SupportMessage
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib.auth.models import User
 from django.utils.decorators import method_decorator
+from django.utils.html import strip_tags
 from django.utils import timezone
 from .forms import UserRegisterForm
 from django.contrib import messages
@@ -24,22 +26,32 @@ def send_confirmation_email(request, user):
     confirmation_link = request.build_absolute_uri(
         reverse("confirm_email", args=[confirmation.token])
     )
-    subject = "Подтвердите email для Столовой Рядом"
-    message = (
-        f"Здравствуйте, {user.username}!\n\n"
-        "Спасибо за регистрацию на Столовая Рядом.\n"
-        "Чтобы подтвердить ваш email и получить доступ к личному кабинету разработчика, \
-"
-        f"перейдите по ссылке:\n\n{confirmation_link}\n\n"
-        "Если вы не регистрировались на сайте, просто проигнорируйте это сообщение.\n"
+    context = {
+        "user": user,
+        "confirmation_link": confirmation_link,
+        "site_name": "Столовая Рядом",
+    }
+    subject = render_to_string(
+        "email_confirmation_subject.txt",
+        context,
+    ).strip()
+    text_body = render_to_string(
+        "email_confirmation_email.txt",
+        context,
     )
-    send_mail(
-        subject,
-        message,
-        settings.DEFAULT_FROM_EMAIL,
-        [user.email],
-        fail_silently=False,
+    html_body = render_to_string(
+        "email_confirmation_email.html",
+        context,
     )
+
+    email_message = EmailMultiAlternatives(
+        subject=subject,
+        body=text_body,
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        to=[user.email],
+    )
+    email_message.attach_alternative(html_body, "text/html")
+    email_message.send(fail_silently=False)
 
 
 def email_confirmed_required(user):
@@ -245,6 +257,115 @@ def _staff_required(view_func):
 def admin_panel(request):
     """Простая панель управления с вкладками; по умолчанию — ссылка на модерацию."""
     return render(request, "admin_panel.html", {})
+
+
+@login_required
+@_staff_required
+def admin_delete_user(request):
+    """Admin page: delete user by email with dry-run and confirmation."""
+    from django.contrib.auth.models import User
+    try:
+        from .models import (
+            EmailConfirmation, APIKey, APIUsage, SupportChat, SupportMessage, Review
+        )
+    except Exception:
+        messages.error(request, "Не удалось загрузить модели для удаления пользователя.")
+        return redirect('admin_panel')
+
+    result = None
+    if request.method == 'POST':
+        email = request.POST.get('email', '').strip()
+        dry_run = request.POST.get('dry_run') == 'on'
+        confirm = request.POST.get('confirm') == 'yes'
+
+        user = User.objects.filter(email__iexact=email).first()
+        if not user:
+            messages.warning(request, f"Пользователь с email {email} не найден.")
+            return redirect('admin_delete_user')
+
+        api_keys_qs = APIKey.objects.filter(user=user)
+        api_usage_qs = APIUsage.objects.filter(api_key__in=api_keys_qs)
+        support_msgs_qs = SupportMessage.objects.filter(sender=user)
+        support_chats_qs = SupportChat.objects.filter(user=user)
+        reviews_qs = Review.objects.filter(user=user)
+        confirmations_qs = EmailConfirmation.objects.filter(user=user)
+
+        result = {
+            'user': user,
+            'api_keys': api_keys_qs.count(),
+            'api_usage': api_usage_qs.count(),
+            'support_chats': support_chats_qs.count(),
+            'support_messages': support_msgs_qs.count(),
+            'reviews': reviews_qs.count(),
+            'confirmations': confirmations_qs.count(),
+            'dry_run': dry_run,
+        }
+
+        if not dry_run and confirm:
+            # perform deletion
+            api_usage_qs.delete()
+            api_keys_qs.delete()
+            support_msgs_qs.delete()
+            support_chats_qs.delete()
+            reviews_qs.delete()
+            confirmations_qs.delete()
+            user.delete()
+            messages.success(request, f"Пользователь {email} и связанные данные удалены.")
+            return redirect('admin_panel')
+
+    return render(request, 'admin_delete_user.html', {'result': result})
+
+
+@login_required
+@_staff_required
+def admin_users_list(request):
+    """Admin page: list users with per-user delete buttons."""
+    from django.contrib.auth.models import User
+    try:
+        from .models import (
+            EmailConfirmation, APIKey, APIUsage, SupportChat, SupportMessage, Review
+        )
+    except Exception:
+        messages.error(request, "Не удалось загрузить модели для удаления пользователя.")
+        return redirect('admin_panel')
+
+    users = User.objects.order_by('-date_joined')[:200]
+
+    if request.method == 'POST':
+        # Expecting 'delete_user_id' and 'confirm' in POST
+        uid = request.POST.get('delete_user_id')
+        confirm = request.POST.get('confirm') == 'yes'
+        if uid and confirm:
+            try:
+                user = User.objects.get(pk=int(uid))
+            except Exception:
+                messages.warning(request, 'Пользователь не найден')
+                return redirect('admin_users_list')
+
+            api_keys_qs = APIKey.objects.filter(user=user)
+            api_usage_qs = APIUsage.objects.filter(api_key__in=api_keys_qs)
+            support_msgs_qs = SupportMessage.objects.filter(sender=user)
+            support_chats_qs = SupportChat.objects.filter(user=user)
+            reviews_qs = Review.objects.filter(user=user)
+            confirmations_qs = EmailConfirmation.objects.filter(user=user)
+
+            # Delete related data
+            api_usage_qs.delete()
+            api_keys_qs.delete()
+            support_msgs_qs.delete()
+            support_chats_qs.delete()
+            reviews_qs.delete()
+            confirmations_qs.delete()
+
+            # Finally delete user
+            user.delete()
+            messages.success(request, 'Пользователь и все связанные данные удалены.')
+            return redirect('admin_users_list')
+        else:
+            messages.warning(request, 'Нужна явная подтверждающая форма (confirm).')
+            return redirect('admin_users_list')
+
+    return render(request, 'admin_users_list.html', {'users': users})
 
 
 @login_required

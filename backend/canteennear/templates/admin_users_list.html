@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+
+{% block title %}Пользователи — Панель админа{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-4xl px-4">
+  <h1 class="text-2xl font-semibold">Пользователи</h1>
+
+  <div class="mt-4 grid gap-4">
+    {% for user in users %}
+      <div class="border rounded p-4 flex items-center justify-between">
+        <div>
+          <div class="font-medium">{{ user.username }}</div>
+          <div class="text-sm text-slate-500">{{ user.email }}</div>
+        </div>
+        <div>
+          <form method="post" onsubmit="return confirm('Точно удалить пользователя {{ user.username }} и все связанные данные? Это действие необратимо.')">
+            {% csrf_token %}
+            <input type="hidden" name="delete_user_id" value="{{ user.id }}" />
+            <input type="hidden" name="confirm" value="yes" />
+            <button type="submit" class="rounded bg-red-600 px-3 py-2 text-white">Удалить аккаунт</button>
+          </form>
+        </div>
+      </div>
+    {% empty %}
+      <p>Пользователей не найдено.</p>
+    {% endfor %}
+  </div>
+
+</div>
+{% endblock %}

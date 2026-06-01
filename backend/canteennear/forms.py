@@ -30,6 +30,12 @@ class UserRegisterForm(UserCreationForm):
             user.save()
         return user
 
+    def clean_email(self):
+        email = self.cleaned_data.get('email')
+        if email and User.objects.filter(email__iexact=email).exists():
+            raise forms.ValidationError('Пользователь с таким email уже существует.')
+        return email
+
 
 class UserLoginForm(AuthenticationForm):
     def __init__(self, *args, **kwargs):

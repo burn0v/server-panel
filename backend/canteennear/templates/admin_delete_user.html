@@ -1,0 +1,51 @@
+{% extends 'base.html' %}
+
+{% block title %}Удалить аккаунт — Панель админа{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-3xl px-4">
+  <h1 class="text-2xl font-semibold">Удаление аккаунта пользователя</h1>
+
+  <form method="post" class="mt-4">
+    {% csrf_token %}
+    <label class="block">
+      <span class="text-sm">Email пользователя</span>
+      <input type="email" name="email" required class="mt-1 block w-full rounded border px-3 py-2" />
+    </label>
+
+    <label class="block mt-3">
+      <input type="checkbox" name="dry_run" /> Показать, что будет удалено (dry-run)
+    </label>
+
+    <div class="mt-4">
+      <button type="submit" class="rounded bg-red-600 text-white px-3 py-2">Показать</button>
+    </div>
+  </form>
+
+  {% if result %}
+    <div class="mt-6 rounded border p-4">
+      <h2 class="font-semibold">Результат для {{ result.user.email }}</h2>
+      <ul class="mt-2 list-disc pl-5">
+        <li>API ключи: {{ result.api_keys }}</li>
+        <li>Записи использования API: {{ result.api_usage }}</li>
+        <li>Чатов поддержки: {{ result.support_chats }}</li>
+        <li>Сообщений поддержки: {{ result.support_messages }}</li>
+        <li>Отзывов: {{ result.reviews }}</li>
+        <li>Подтверждений email: {{ result.confirmations }}</li>
+      </ul>
+
+      {% if result.dry_run %}
+        <p class="mt-4">Dry-run: ничего не удалено.</p>
+      {% else %}
+        <form method="post" class="mt-4">
+          {% csrf_token %}
+          <input type="hidden" name="email" value="{{ result.user.email }}" />
+          <input type="hidden" name="confirm" value="yes" />
+          <button type="submit" class="rounded bg-red-700 text-white px-3 py-2">Подтвердить удаление</button>
+        </form>
+      {% endif %}
+    </div>
+  {% endif %}
+
+</div>
+{% endblock %}

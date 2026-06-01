@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.urls import path, include
-from django.contrib.auth.views import LoginView
+from django.contrib.auth.views import LoginView, PasswordResetView
 from . import views
 from .forms import UserLoginForm
 
@@ -19,6 +19,16 @@ urlpatterns = [
         template_name='registration/login.html',
         authentication_form=UserLoginForm
     ), name='login'),
+    path(
+        "accounts/password_reset/",
+        PasswordResetView.as_view(
+            template_name='registration/password_reset_form.html',
+            email_template_name='registration/password_reset_email.txt',
+            subject_template_name='registration/password_reset_subject.txt',
+            html_email_template_name='registration/password_reset_email.html',
+        ),
+        name='password_reset',
+    ),
     path("accounts/", include("django.contrib.auth.urls")),
     path("developers/", views.developer_dashboard, name="developer_dashboard"),
     path("support/", views.support_view, name="support"),
@@ -32,4 +42,6 @@ urlpatterns = [
     path("admin-panel/support/", views.admin_support_list, name="admin_support_list"),
     path("admin-panel/support/<int:chat_id>/", views.admin_support_chat, name="admin_support_chat"),
     path("admin-panel/support/archive/", views.admin_support_archive, name="admin_support_archive"),
+    path("admin-panel/delete-user/", views.admin_delete_user, name="admin_delete_user"),
+    path("admin-panel/users/", views.admin_users_list, name="admin_users_list"),
 ]
